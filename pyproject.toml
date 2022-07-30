@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools >= 40.6.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sistemasDePotencia"
+version = "0.1"
+description = "Herramientas de Wolfang para calculos rapidos en sistemas de potencia"
+readme = "README.md"
+requires-python = ">=3.7"
+authors = [
+  {name = "Wolfang Torres", email = "wolfang.torres@gmail.com"},
+]
+dynamic = ["dependencies", "optional-dependencies"]
+
+[tool.black]
+line-length = 120
+include = '\.pyi?$'
+exclude = '''
+(
+    \.eggs
+  | \.git
+  | \.venv
+  | build
+  | dist
+)
+'''
+
+[tool.isort]
+src_paths = ["sistemasDePotencia", "registro"]
+line_length = 120
+case_sensitive = true
+length_sort = true
+balanced_wrapping = true
+multi_line_output = 3
+include_trailing_comma = true
+use_parentheses = true
+verbose = false
+skip_glob = ["lvenv/*", "venv/*", ".git/*", ".vscode/*", "*.egg-info"]
+atomic = true
+import_heading_stdlib = "Standard Library"
+import_heading_thirdparty = "Pip"
+import_heading_localfolder = "Local"
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+
+[tool.pylint.messages_control]
+disable = "C0330, C0326"
+
+[tool.pylint.format]
+max-line-length = "120"
+
+[tool.pylint.reports]
+output-format="text"
+msg-template="{path}:{module}:{line}: [{msg_id}({symbol}), {obj}] {msg}"
+
+[tool.pylint.logging]
+logging-format-style="new"
+logging-modules="logging"
+
+[tool.flakehell]
+max_line_length = 120
+format = "grouped"
+show_source = false
+exclude = [
+    ".git",
+    "__pycache__",
+    ".vscode",
+    "*venv",
+    "build",
+    "dist",
+    "old",
+    "*.egg-info",
+]
+
+[tool.flakehell.plugins]
+mccabe = ["+C*"]
+pycodestyle = ["+E*", "+W*", "-E203", "-E501", "-W503"]
+pyflakes = ["+F*"]
+flake8-bugbear = ["+*", "+B950"]
