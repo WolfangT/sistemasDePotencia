@@ -1,15 +1,28 @@
 # Pip
 import numpy as np
 
-from sistemasDePotencia.comun import M, u, Vb13, Vb24, inf
+from sistemasDePotencia.comun import M, Vb13, Vb24, u, inf
 from sistemasDePotencia.redes import (
     Barra,
+    Linea,
     LineaReal,
     CargaIdeal,
     GaussSiedel,
+    GeneradorIdeal,
     GeneradorBasico,
+    BancoCapasitores,
     TransformadorTap,
     reduccionKron,
+)
+from sistemasDePotencia.despacho import (
+    Combinacion,
+    BarraDespacho,
+    CargaDespacho,
+    GeneradorDespacho,
+    GrupoCombinaciones,
+    tabla_costos,
+    tabla_partes_iguales,
+    tabla_despacho_economnico,
 )
 
 
@@ -91,7 +104,6 @@ def trabajo_final():
     print(C)
 
 
-
 def trabajo_final_despacho():
     G1 = GeneradorDespacho("G1", a=0.0096, b=6.4, c=400, Pmax=600, Pmin=50, Ccon=1400, Cdes=2800)
     G2 = GeneradorDespacho("G2", a=0.0080, b=8.0, c=500, Pmax=400, Pmin=50, Ccon=1600, Cdes=3200)
@@ -115,7 +127,6 @@ def trabajo_final_despacho():
     B4 = BarraDespacho("B4", G4, carga=SL1)
     B6 = BarraDespacho("B6", carga=SL2)
     B8 = BarraDespacho("B8", G5, carga=SL3)
-
 
 
 if __name__ == "__main__":
