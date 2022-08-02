@@ -3,24 +3,26 @@
 # Herramientas de Wolfang para calculos rapidos en sistemas de potencia 1
 
 # Standard Library
-from math import atan, sqrt
+from math import atan, sqrt, acos
 
 # Pip
 import numpy as np
 
-# Local
 from sistemasDePotencia.comun import (
-    display_rect,
-    display_polar,
-    rect,
     ang,
-    display_single,
+    rect,
     degrees,
     cambio_base,
+    display_rect,
+    display_polar,
+    display_single,
+    S,
+    V,
+    I,
+    Z,
+    Y,
+    inf,
 )
-
-np.set_printoptions(precision=4, suppress=True, linewidth=120)
-
 
 # Clases de ayuda
 
@@ -176,13 +178,15 @@ class GaussSiedel:
         self.barras = barras
         self.Vn = Vn
         self.Qn = Qn
-        self.P = Pn
+        self.Pn = Pn
         self.tipos = [1] + [2 if v else 3 for v in Vn[1:]]
         self.alpha = alpha
         self.Ym = Ym
         self.iter = 0
         self.V = [[v or 1 + 0j for v in self.Vn]]
+        self.P = [p or 0 for p in self.Pn]
         self.Q = [[q or 0j for q in self.Qn]]
+        self.error = [[inf for v in self.Vn]]
 
     def __str__(self):
         k = self.iter
@@ -197,18 +201,18 @@ class GaussSiedel:
                         f"{self.TIPOS[tipo]}",
                     ]
                 )
-                for (barra, v, p, q, tipo) in zip(
-                    self.barras, self.V[k], self.P, self.Q[k], self.tipos
-                )
+                for (barra, v, p, q, tipo) in zip(self.barras, self.V[k], self.P, self.Q[k], self.tipos)
             ]
         )
         return (
-            f"Metodo de Gauss Siedel - iter {self.iter}: (α={self.alpha})\n"
-            + " | ".join(
-                [" # ", "V".center(23), "P".center(11), "Q".center(11), " Tipo "]
-            )
+            f"Metodo de Gauss Siedel - iter {self.iter}: (α={self.alpha}, error={self.max_error*100:4.2f}%)\n"
+            + " | ".join([" # ", "V".center(23), "P".center(11), "Q".center(11), " Tipo "])
             + f"\n{lineas}\n"
         )
+
+    @property
+    def max_error(self):
+        return max(self.error[-1])
 
     def calcQ(self, k, i):
         return (
@@ -216,10 +220,7 @@ class GaussSiedel:
                 self.V[k - 1][i].conjugate()
                 * (
                     sum(self.Ym[i][j] * self.V[k][j] for j in range(i))
-                    + sum(
-                        self.Ym[i][j] * self.V[k - 1][j]
-                        for j in range(i, len(self.barras))
-                    )
+                    + sum(self.Ym[i][j] * self.V[k - 1][j] for j in range(i, len(self.barras)))
                 )
             ).imag
             * 1j
@@ -233,10 +234,7 @@ class GaussSiedel:
             * (
                 ((self.P[i] - Q[i]) / self.V[k - 1][i].conjugate())
                 - sum(self.Ym[i][j] * self.V[k][j] for j in range(i))
-                - sum(
-                    self.Ym[i][j] * self.V[k - 1][j]
-                    for j in range(i + 1, len(self.barras))
-                )
+                - sum(self.Ym[i][j] * self.V[k - 1][j] for j in range(i + 1, len(self.barras)))
             )
         )
 
@@ -246,18 +244,9 @@ class GaussSiedel:
     def iteracion(self):
         self.iter += 1
         k = self.iter
-        self.V.append(
-            [
-                self.V[k - 1][i] if self.tipos[i] in (1, 2) else None
-                for i, b in enumerate(self.barras)
-            ]
-        )
-        self.Q.append(
-            [
-                self.Q[k - 1][i] if self.tipos[i] == 3 else None
-                for i, b in enumerate(self.barras)
-            ]
-        )
+        self.V.append([self.V[k - 1][i] if self.tipos[i] in (1, 2) else None for i, b in enumerate(self.barras)])
+        self.Q.append([self.Q[k - 1][i] if self.tipos[i] == 3 else None for i, b in enumerate(self.barras)])
+        self.error.append([0 for b in self.barras])
         for i, barra in enumerate(self.barras):
             if self.tipos[i] == 1:
                 continue
@@ -268,6 +257,16 @@ class GaussSiedel:
             elif self.tipos[i] == 3:
                 self.V[k][i] = self.calcV(k, i)
                 self.V[k][i] = self.acel(self.V[k - 1][i], self.V[k][i])
+            self.error[k][i] = abs((self.V[k][i] - self.V[k - 1][i]) / self.V[k - 1][i])
+        return str(self)
+
+    def resolver(self, error=0.01, max_iter=100):
+        """Resolver el sistemas hasta obtener un error maximo"""
+        for i in range(max_iter):
+            self.iteracion()
+            res = [e < error for e in self.error[-1]]
+            if all(res):
+                break
         return str(self)
 
 
@@ -313,72 +312,6 @@ def tap_fic(Z, t):
         f"  Y * (1-t):   {display_rect(Y*(1-t))} ℧ pu\n"
         f"  Z * t(t-1):  {display_rect(Y*(t**2-t))} ℧ pu\n"
     )
-
-
-# Clases de Valores
-
-
-class Valor(complex):
-    TIPOS = {
-        "S": (("W", "VAR", "VA"), "rect"),
-        "V": ((None, None, "V"), "polar"),
-        "I": ((None, None, "A"), "polar"),
-        "Z": ((None, None, "Ω"), "rect"),
-        "Y": ((None, None, "℧"), "rect"),
-    }
-    TIPO = None
-
-    def __new__(cls, name, comp, barra=None):
-        return super().__new__(cls, comp)
-
-    def __init__(self, name, comp, barra=None):
-        self.name = name
-        self.unidad = self.TIPOS[self.TIPO][0] if self.TIPO else ("", " J", "")
-        self.muestra = self.TIPOS[self.TIPO][1] if self.TIPO else "rect"
-        self.barra = barra
-        super().__init__()
-
-    def __str__(self):
-        u_fin = self.unidad[2] + (" pu" if self.barra else "")
-
-        if self.muestra == "rect":
-            if self.unidad[:2] == (None, None):
-                val = display_rect(self, u_fin=u_fin)
-            else:
-                u_r = self.unidad[0] + (" pu" if self.barra else "")
-                u_i = self.unidad[1] + (" pu" if self.barra else "")
-                val = display_rect(self, u_r, u_i)
-        elif self.muestra == "polar":
-            val = display_polar(self, u_fin)
-        return f"{self.name}: {val}"
-
-    def en_real(self):
-        if self.barra:
-            base = getattr(self.barra, self.TIPO + "b")
-            valor = self * base
-        else:
-            valor = self
-        return self.__class__(self.name, valor).__str__()
-
-
-class S(Valor):
-    TIPO = "S"
-
-
-class V(Valor):
-    TIPO = "V"
-
-
-class I(Valor):  # noqa: E742
-    TIPO = "I"
-
-
-class Z(Valor):
-    TIPO = "Z"
-
-
-class Y(Valor):
-    TIPO = "Y"
 
 
 # Clases de elementos de potencia
@@ -428,34 +361,44 @@ class Barra(Elemento):
         )
 
 
-class Generador(Elemento):
-    def __init__(self, nombre, *, Sn, Vn, Zev, b):
-        super().__init__(nombre)
-        self.Sn = Sn
-        self.Vn = Vn
-        self.Zev = Zev
-        self.b = b
-        self.Z = cambio_base(self.Zev, Sn, Vn, b.Sb, b.Vb)
-        self.Y = 1 / self.Z
+class GeneradorIdeal(Elemento):
+    """Generador Ideal conectado de tierra a barra primaria"""
+
+    def __init__(self, nombre, bp, *, Pn, Vn, Qnmin=None, Qnmax=None, **kwargs):
+        super().__init__(nombre, **kwargs)
+        self.bp = bp
+        self.Pn = S("Pn", Pn / bp.Sb, bp)
+        self.Vn = V("Vn", Vn / bp.Vb, bp)
+        self.Qnmin = None if Qnmin is None else S("Qmin", complex(0, Qnmin) / bp.Sb, bp)
+        self.Qnmax = None if Qnmax is None else S("Qmax", complex(0, Qnmax) / bp.Sb, bp)
 
     def __str__(self):
         return (
-            f"{self.nombre}:\n"
-            f"  Sn: {display_rect(self.Sn)} VA\n"
-            f"  Vn: {display_rect(self.Vn)} V\n"
-            f"  Z:  {display_rect(self.Z)} Ω pu\n"
-            f"  Y:  {display_rect(self.Y)} ℧ pu\n"
+            f"{self.nombre}: ({self.bp.nombre})\n"
+            f"  {self.Pn}\n"
+            f"  {self.Vn}\n"
+            f" Valores:\n"
+            f"  {self.Qnmin}\n"
+            f"  {self.Qnmax}\n"
         )
 
 
-class GeneradorBasico(Elemento):
+class GeneradorBasico(GeneradorIdeal):
     """Generador conectado a la barra bp con parametro en absoluto"""
 
-    def __init__(self, nombre, *, bp, Sn, Vn, R, X):
-        super().__init__(nombre)
+    def __init__(self, nombre, *, bp, Sn, PF, Vn, R=None, X=None, Zev=None):
+        self.PF = PF
+        Sc = rect(Sn, acos(PF))
+        self.S = S("Sn", Sc / bp.Sb, bp)
+        super().__init__(
+            nombre,
+            bp,
+            Pn=Sc.real,
+            Vn=Vn,
+        )
         self.bp = bp
-        self.Sn = Sn
         self.Vn = Vn
+        self.V = V("V", self.Vn / self.bp.Vb, self.bp)
         self.R = Z("R", complex(R, 0), self.bp)
         self.X = Z("X", complex(0, X), self.bp)
         self.Z = Z("Z", self.R + self.X, self.bp)
@@ -464,8 +407,8 @@ class GeneradorBasico(Elemento):
     def __str__(self):
         return (
             f"{self.nombre}: ({self.bp.nombre})\n"
-            f"  Sn: {display_single(self.Sn)} VA\n"
-            f"  Vn: {display_single(self.Vn)} V\n"
+            f"  {self.S}\n"
+            f"  {self.V}\n"
             f" Valores:\n"
             f"  {self.Z}\n"
             f" Modelo Admitancias:\n"
@@ -528,16 +471,10 @@ class Linea(Elemento):
         )
 
     def modelo_admitancias(self):
-        return (
-            f"Flujo de Potencias en {self.nombre}:\n"
-            f"{ModeloPI(self.bp, self.bs, self.Yp0, self.Yps, self.Ys0)}\n"
-        )
+        return f"Flujo de Potencias en {self.nombre}:\n" f"{ModeloPI(self.bp, self.bs, self.Yp0, self.Yps, self.Ys0)}\n"
 
     def flujo_potencias(self):
-        return (
-            f"Flujo de Potencias en {self.nombre}:\n"
-            f"{ModeloPI(self.bp, self.bs, self.Yp0, self.Yps, self.Ys0)}\n"
-        )
+        return f"Flujo de Potencias en {self.nombre}:\n" f"{ModeloPI(self.bp, self.bs, self.Yp0, self.Yps, self.Ys0)}\n"
 
 
 class LineaReal(Linea):
@@ -557,9 +494,7 @@ class LineaReal(Linea):
         Bn: Parametro de Suceptancia de la linea en valor absoluto (por kilmetro)
     """
 
-    def __init__(
-        self, nombre, *, Rn, Xn, Gn, Bn, bp, bs, T=1, L=1, Sn=None, Vn=None, In=None
-    ):
+    def __init__(self, nombre, *, Rn, Xn, Gn, Bn, bp, bs, T=1, L=1, Sn=None, Vn=None, In=None):
         self.Sn = Sn
         self.Vn = Vn
         self.In = In
@@ -721,10 +656,7 @@ class TransformadorTap(TransformadorSimple):
         )
 
     def flujo_potencias(self):
-        return (
-            f"Flujo de Potencias en {self.nombre}:\n"
-            f"{ModeloPI(self.bp, self.bs, self.Yp0, self.Yps, self.Ys0)}\n"
-        )
+        return f"Flujo de Potencias en {self.nombre}:\n" f"{ModeloPI(self.bp, self.bs, self.Yp0, self.Yps, self.Ys0)}\n"
 
 
 class TransformadorTriple(Elemento):
@@ -772,15 +704,9 @@ class TransformadorTriple(Elemento):
         self.Yp = None
         self.Ys = None
         self.Yt = None
-        self.Zpt = self.Zept and cambio_base(
-            self.Zept, self.Snp, self.Vnp, self.bp.Sb, self.bp.Vb
-        )
-        self.Zps = self.Zeps and cambio_base(
-            self.Zeps, self.Snp, self.Vns, self.bs.Sb, self.bs.Vb
-        )
-        self.Zst = self.Zest and cambio_base(
-            self.Zest, self.Snp, self.Vnt, self.bt.Sb, self.bt.Vb
-        )
+        self.Zpt = self.Zept and cambio_base(self.Zept, self.Snp, self.Vnp, self.bp.Sb, self.bp.Vb)
+        self.Zps = self.Zeps and cambio_base(self.Zeps, self.Snp, self.Vns, self.bs.Sb, self.bs.Vb)
+        self.Zst = self.Zest and cambio_base(self.Zest, self.Snp, self.Vnt, self.bt.Sb, self.bt.Vb)
         self.Ypt = self.Zpt and 1 / self.Zpt
         self.Yps = self.Zps and 1 / self.Zps
         self.Yst = self.Zst and 1 / self.Zst
@@ -862,36 +788,6 @@ class BancoCapasitores(Elemento):
             f"  {self.In.en_real()}\n"
             f"  {self.Zn.en_real()}\n"
             f"  {self.Yn.en_real()}\n"
-        )
-
-
-class GeneradorIdeal(Elemento):
-    """Generador Ideal conectado de tierra a barra primaria"""
-
-    def __init__(self, nombre, *, bp, Pn, Vn, Qnmin, Qnmax, **kwargs):
-        self.bp = bp
-        self.P = S("P", Pn / bp.Sb, bp)
-        self.V = V("V", Vn / bp.Vb, bp)
-        self.Qmin = S("Qmin", complex(0, Qnmin) / bp.Sb, bp)
-        self.Qmax = S("Qmax", complex(0, Qnmax) / bp.Sb, bp)
-        super().__init__(nombre, **kwargs)
-
-    def __str__(self):
-        return (
-            f"{self.nombre}: ({self.bp.nombre})\n"
-            f"  {self.P}\n"
-            f"  {self.V}\n"
-            f"  {self.Qmin}\n"
-            f"  {self.Qmax}\n"
-        )
-
-    def en_real(self):
-        return (
-            f"{self.nombre}: ({self.bp.nombre})\n"
-            f"  {self.P.en_real()}\n"
-            f"  {self.V.en_real()}\n"
-            f"  {self.Qmin.en_real()}\n"
-            f"  {self.Qmax.en_real()}\n"
         )
 
 

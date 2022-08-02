@@ -4,15 +4,11 @@ import numpy as np
 from sistemasDePotencia.comun import M, Vb13, Vb24, u, inf
 from sistemasDePotencia.redes import (
     Barra,
-    Linea,
     LineaReal,
-    CargaIdeal,
-    GaussSiedel,
-    GeneradorIdeal,
     GeneradorBasico,
-    BancoCapasitores,
     TransformadorTap,
     reduccionKron,
+    GaussSiedel,
 )
 from sistemasDePotencia.despacho import (
     Combinacion,
@@ -20,13 +16,11 @@ from sistemasDePotencia.despacho import (
     CargaDespacho,
     GeneradorDespacho,
     GrupoCombinaciones,
-    tabla_costos,
-    tabla_partes_iguales,
-    tabla_despacho_economnico,
+    RedSimplificada,
 )
 
 
-def trabajo_final():
+def trabajo_final_red():
     Sb = 1000 * M
     SbTxA = 1500 * M
     SbTxB = 500 * M
@@ -38,11 +32,11 @@ def trabajo_final():
     print(B6 := Barra("B6", Sb=Sb, Vb=Vb13))
     print(B7 := Barra("B7", Sb=Sb, Vb=Vb24))
     print(B8 := Barra("B8", Sb=Sb, Vb=Vb13))
-    print(G1 := GeneradorBasico("G1", bp=B1, Sn=750 * M, Vn=Vb13, R=0, X=0.1714))
-    print(G2 := GeneradorBasico("G2", bp=B1, Sn=500 * M, Vn=Vb13, R=0, X=0.2636))
-    print(G3 := GeneradorBasico("G3", bp=B1, Sn=500 * M, Vn=Vb13, R=0, X=0.2856))
-    print(G4 := GeneradorBasico("G4", bp=B4, Sn=500 * M, Vn=Vb13, R=0, X=0.2513))
-    print(G5 := GeneradorBasico("G5", bp=B8, Sn=500 * M, Vn=Vb13, R=0, X=0.2403))
+    print(G1 := GeneradorBasico("G1", bp=B1, Sn=750 * M, PF=0.8, Vn=Vb13, R=0, X=0.1714))
+    print(G2 := GeneradorBasico("G2", bp=B1, Sn=500 * M, PF=0.8, Vn=Vb13, R=0, X=0.2636))
+    print(G3 := GeneradorBasico("G3", bp=B1, Sn=500 * M, PF=0.8, Vn=Vb13, R=0, X=0.2856))
+    print(G4 := GeneradorBasico("G4", bp=B4, Sn=500 * M, PF=0.8, Vn=Vb13, R=0, X=0.2513))
+    print(G5 := GeneradorBasico("G5", bp=B8, Sn=500 * M, PF=0.8, Vn=Vb13, R=0, X=0.2403))
     dt = 0.2 / 24
     print(TX1 := TransformadorTap("TX1", dt=dt, pos=0, Sn=SbTxA, Vp=Vb24, Vs=Vb13, Zev=0.0925, rel=inf, bp=B2, bs=B1))
     print(TX2 := TransformadorTap("TX2", dt=dt, pos=0, Sn=SbTxA, Vp=Vb24, Vs=Vb13, Zev=0.0925, rel=inf, bp=B2, bs=B1))
@@ -81,27 +75,32 @@ def trabajo_final():
             [0, 0, 0, 0, 0, 0, -Y78, Y78 + Y80],
         ]
     )
-    Ym = reduccionKron(Ym, 7)
-    Ym = reduccionKron(Ym, 5)
-    Ym = reduccionKron(Ym, 3)
-    Ym = reduccionKron(Ym, 2)
-    print()
-    print("Matris de Admitancias Reducidas")
     print(Ym)
-    Zm = np.linalg.inv(Ym)
     print()
-    print("Matris de Impedancias Reducidas")
-    print(Zm)
-    C = np.array(
-        [
-            [1, 1, 1, 0, 0, 0, 0, 0],
-            [0, 0, 0, 1, 0, 1, 0, 0],
-            [0, 0, 0, 0, 0, 0, 1, 0],
-            [0, 0, 0, 0, 1, 0, 0, 1],
-        ]
+    alpha = 1.6
+    print(
+        GS := GaussSiedel(
+            [B1, B2, B3, B4, B5, B6, B7, B8],
+            [1 + 0j, None, None, G4.V, None, None, None, G5.V],
+            [None, 0, 0, 0.320, 0, 0.240, 0, 0.160],
+            [None, 0j, 0j, 0.240j, 0j, 0.180j, 0j, 0.120j],
+            alpha,
+            Ym,
+        )
     )
-    print("Matris de separación C")
-    print(C)
+    print(GS.resolver())
+    # 0.01 DE ERROR
+    # Ym = reduccionKron(Ym, 7)
+    # Ym = reduccionKron(Ym, 5)
+    # Ym = reduccionKron(Ym, 3)
+    # Ym = reduccionKron(Ym, 2)
+    # print()
+    # print("Matris de Admitancias Reducidas")
+    # print(Ym)
+    # Zm = np.linalg.inv(Ym)
+    # print()
+    # print("Matris de Impedancias Reducidas")
+    # print(Zm)
 
 
 def trabajo_final_despacho():
@@ -127,8 +126,30 @@ def trabajo_final_despacho():
     B4 = BarraDespacho("B4", G4, carga=SL1)
     B6 = BarraDespacho("B6", carga=SL2)
     B8 = BarraDespacho("B8", G5, carga=SL3)
+    for barra in (B1, B4, B6, B8):
+        print(barra)
+    red = RedSimplificada(B1, B4, B6, B8)
+    print()
+    print("I1")
+    print(red.corrientes1)
+    print("C12")
+    print(red.separacionDeBarras())
+    print("I2")
+    print(red.corrientes2)
+    print("C23")
+    print(red.unificacionDeCargas([1, 1, 1]))
+    print("I3")
+    print(red.corrientes3)
+    print("C34")
+    print(red.cambioDeReferencia())
+    print("I4")
+    print(red.corrientes4)
+    print("C4G")
+    print(red.cambioDeVariable(10, [1, 2, 3, 4, 5]))
+    print("PG1")
+    print(red.potenciasG)
 
 
 if __name__ == "__main__":
-    trabajo_final()
+    trabajo_final_red()
     trabajo_final_despacho()

@@ -7,12 +7,21 @@
 import cmath
 from cmath import pi
 
+# Pip
+import numpy as np
+
+# Conf librerias
+
+np.set_printoptions(precision=4, suppress=True, linewidth=120)
+
 # Constantes
 
-M = 10**6
-K = 10**3
-m = 10**-3
-u = 10**-6
+G = 10 ** 9
+M = 10 ** 6
+K = 10 ** 3
+m = 10 ** -3
+u = 10 ** -6
+n = 10 ** -9
 
 inf = float("inf")
 
@@ -66,3 +75,69 @@ def display_rect(cmplx, u_real="", u_imag="J", u_fin=""):
 def cambio_base(val, Sn, Vn, Sb, Vb):
     """Cabio de Base de valores nominales a valores bases"""
     return val * ((Vn / Vb) ** 2) * (Sb / Sn)
+
+
+# Clases de Valores
+
+
+class Valor(complex):
+    TIPOS = {
+        "S": (("W", "VAR", "VA"), "rect"),
+        "V": ((None, None, "V"), "polar"),
+        "I": ((None, None, "A"), "polar"),
+        "Z": ((None, None, "Ω"), "rect"),
+        "Y": ((None, None, "℧"), "rect"),
+    }
+    TIPO = None
+
+    def __new__(cls, name, comp, barra=None):
+        return super().__new__(cls, comp)
+
+    def __init__(self, name, comp, barra=None):
+        self.name = name
+        self.unidad = self.TIPOS[self.TIPO][0] if self.TIPO else ("", " J", "")
+        self.muestra = self.TIPOS[self.TIPO][1] if self.TIPO else "rect"
+        self.barra = barra
+        super().__init__()
+
+    def __str__(self):
+        u_fin = self.unidad[2] + (" pu" if self.barra else "")
+
+        if self.muestra == "rect":
+            if self.unidad[:2] == (None, None):
+                val = display_rect(self, u_fin=u_fin)
+            else:
+                u_r = self.unidad[0] + (" pu" if self.barra else "")
+                u_i = self.unidad[1] + (" pu" if self.barra else "")
+                val = display_rect(self, u_r, u_i)
+        elif self.muestra == "polar":
+            val = display_polar(self, u_fin)
+        return f"{self.name}: {val}"
+
+    def en_real(self):
+        if self.barra:
+            base = getattr(self.barra, self.TIPO + "b")
+            valor = self * base
+        else:
+            valor = self
+        return self.__class__(self.name, valor).__str__()
+
+
+class S(Valor):
+    TIPO = "S"
+
+
+class V(Valor):
+    TIPO = "V"
+
+
+class I(Valor):  # noqa: E742
+    TIPO = "I"
+
+
+class Z(Valor):
+    TIPO = "Z"
+
+
+class Y(Valor):
+    TIPO = "Y"

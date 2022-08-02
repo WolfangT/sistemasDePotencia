@@ -6,21 +6,15 @@ import numpy as np
 from sistemasDePotencia.redes import (
     Barra,
     Linea,
-    LineaReal,
     CargaIdeal,
     GaussSiedel,
     GeneradorIdeal,
-    GeneradorBasico,
     BancoCapasitores,
     TransformadorTap,
-    reduccionKron,
 )
 from sistemasDePotencia.despacho import (
-    Combinacion,
     BarraDespacho,
-    CargaDespacho,
     GeneradorDespacho,
-    GrupoCombinaciones,
     tabla_costos,
     tabla_partes_iguales,
     tabla_despacho_economnico,
@@ -454,15 +448,9 @@ def wolfang():
     print(
         GS := GaussSiedel(
             [B1, B2, B3, B4, B5],
-            [1 + 0j, None, None, G2.V, None],
-            [None, -C2.S.real, -C3.S.real, G2.P - C4.S.real, -C5.S.real],
-            [
-                None,
-                -C2.S.imag * 1j,
-                -C3.S.imag * 1j,
-                None,
-                -C5.S.imag * 1j,
-            ],
+            [1 + 0j, None, None, G2.Vn, None],
+            [None, -C2.S.real, -C3.S.real, G2.Pn - C4.S.real, -C5.S.real],
+            [None, -C2.S.imag * 1j, -C3.S.imag * 1j, None, -C5.S.imag * 1j],
             alpha,
             Ym,
         )
@@ -473,12 +461,12 @@ def wolfang():
 
 # Potencia 2
 def evaluacion_1_ejercicio_1():
-    barra = Barra(
+    barra = BarraDespacho(
         "B1",
-        Generador("1", a=0.012, b=9),
-        Generador("2", a=0.0096, b=6),
-        Generador("3", a=0.008, b=8),
-        Generador("4", a=0.0068, b=10),
+        GeneradorDespacho("1", a=0.012, b=9),
+        GeneradorDespacho("2", a=0.0096, b=6),
+        GeneradorDespacho("3", a=0.008, b=8),
+        GeneradorDespacho("4", a=0.0068, b=10),
     )
     print(barra)
     data = barra.analisis(80)
@@ -494,4 +482,4 @@ def evaluacion_1_ejercicio_1():
 
 
 if __name__ == "__main__":
-    pass
+    wolfang()

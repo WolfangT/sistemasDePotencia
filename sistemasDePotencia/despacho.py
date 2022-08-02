@@ -3,10 +3,10 @@
 # Herramientas de Wolfang para calculos rapidos en sistemas de potencia 2
 
 # Pip
+import numpy as np
 from texttable import Texttable
 
-# Local
-from sistemasDePotencia.comun import paralelo, inf
+from sistemasDePotencia.comun import inf, paralelo
 
 # Funciones de ayuda
 
@@ -158,9 +158,10 @@ class BarraDespacho(ElementoDespacho):
         costo: Costo por unidad de combustible en los generadores de esta barra
     """
 
-    def __init__(self, nombre, *generadores, carga=None,  costo=1, **kwargs):
+    def __init__(self, nombre, *generadores, carga=None, costo=1, **kwargs):
         self.gens = generadores
         self.costo = costo
+        self.carga = carga
         self._at = None
         self._bt = None
         super().__init__(nombre, **kwargs)
@@ -168,7 +169,9 @@ class BarraDespacho(ElementoDespacho):
     def __str__(self):
         return (
             f"Barra {self.nombre}:\tλt = {self.at:0.4f}*Pt + {self.bt:0.2f},"
-            f"\t{self.Pmax} >= Pt >= {self.Pmin}\n" + "".join(f"\t{g}\n" for g in self.gens)
+            f"\t{self.Pmax} >= Pt >= {self.Pmin}\n"
+            + "".join(f"\t{g}\n" for g in self.gens)
+            + (f"\t{self.carga}\n" if self.carga else "")
         )
 
     def _ordenar(self, data):
@@ -188,13 +191,13 @@ class BarraDespacho(ElementoDespacho):
     @property
     def at(self):
         if self._at is None:
-            self._at = calc_a(*self.gens)
+            self._at = calc_a(*self.gens) if self.gens else inf
         return self._at
 
     @property
     def bt(self):
         if self._bt is None:
-            self._bt = calc_b(self.at, *self.gens)
+            self._bt = calc_b(self.at, *self.gens) if self.gens else inf
         return self._bt
 
     def calc_partes_iguales(self, pt, gens=None, fijo=None):
@@ -306,6 +309,8 @@ class BarraDespacho(ElementoDespacho):
 
 
 class Combinacion:
+    """Combinaciones de generadores"""
+
     def __init__(self, nombre, *generadores):
         self.nombre = nombre
         self.gens = generadores
@@ -315,6 +320,11 @@ class Combinacion:
 
 
 class GrupoCombinaciones:
+    """Grupo de combinaciones de generadores
+
+    Calcula las transiciones entre ellas y sus costos
+    """
+
     def __init__(self, *combinaciones):
         self.combs = combinaciones
         self._gens = None
@@ -368,6 +378,102 @@ class GrupoCombinaciones:
         return table.draw()
 
 
+class RedSimplificada:
+    """Red simplificada de barras
 
-if __name__ == "__main__":
-    test()
+    Determina las matrices de transformacion C
+    """
+
+    def __init__(self, *barras):
+        self.barras = barras
+        self.gens = [gen for barra in self.barras for gen in barra.gens]
+        self.cargas = [barra.carga for barra in self.barras if barra.carga]
+        self._C12 = None
+        self._C34 = None
+
+    @property
+    def corrientes1(self):
+        return np.array([[f"I{barra.nombre}"] for barra in self.barras])
+
+    @property
+    def corrientes2(self):
+        return np.array([[f"I{gen.nombre}"] for gen in self.gens] + [[f"I{carga.nombre}"] for carga in self.cargas])
+
+    @property
+    def corrientes3(self):
+        return np.array([[f"I{gen.nombre}"] for gen in self.gens] + [["Ist"]])
+
+    @property
+    def corrientes4(self):
+        return np.array([[f"I{gen.nombre}"] for gen in self.gens] + [["IT"]])
+
+    @property
+    def potenciasG(self):
+        return np.array([[f"P{gen.nombre}"] for gen in self.gens] + [["1"]])
+
+    @property
+    def C12(self):
+        if self._C12 is None:
+            self._C12 = self.separacionDeBarras()
+        return self._C12
+
+    @property
+    def C34(self):
+        if self._C34 is None:
+            self._C34 = self.cambioDeReferencia()
+        return self._C34
+
+    def separacionDeBarras(self):
+        """Separa las barras en barras de cargas y de generación"""
+        cols = self.gens + self.cargas
+        C12 = np.zeros((len(self.barras), len(cols)), dtype=np.complex64)
+        for y, barra in enumerate(self.barras):
+            for x, col in enumerate(cols):
+                if isinstance(col, GeneradorDespacho):
+                    if col in barra.gens:
+                        C12[y][x] = 1
+                elif isinstance(col, CargaDespacho):
+                    if col is barra.carga:
+                        C12[y][x] = 1
+        return C12
+
+    def unificacionDeCargas(self, Is):
+        """Unifica las cargas segun las corrientes que consumen
+
+        Args:
+            Is (list[float]): lista de la corrientes que consumen cada carga
+        """
+        ng = len(self.gens)
+        nc = len(self.cargas)
+        if len(Is) != len(self.cargas):
+            raise ValueError("Se requiere de una corriente por carga")
+        It = sum(Is)
+        k = [i / It for i in Is]
+        C23 = np.zeros((ng + nc, ng + 1), dtype=np.complex64)
+        for y in range(ng):
+            C23[y][y] = 1
+        for y, i in enumerate(k):
+            C23[ng + y][ng] = i
+        return C23
+
+    def cambioDeReferencia(self):
+        """Cambio de referencia de carga a tierra"""
+        ng = len(self.gens)
+        C34 = np.identity(ng + 1, dtype=np.complex64)
+        for x in range(ng):
+            C34[ng][x] = -1
+        return C34
+
+    def cambioDeVariable(self, IT, ms):
+        """Cambio de variable de corriente a potencia
+
+        Args:
+            IT (float): Corriente de tierra
+            ms (list[float]): lista de factores de  trasnformacion
+        """
+        ng = len(self.gens)
+        C4G = np.identity(ng + 1, dtype=np.complex64)
+        for n, m in enumerate(ms):
+            C4G[n][n] = m
+        C4G[ng][ng] = IT
+        return C4G
