@@ -2,11 +2,14 @@
 # despacho.py
 # Herramientas de Wolfang para calculos rapidos en sistemas de potencia 2
 
+from math import sin, acos
+
 # Pip
 import numpy as np
 from texttable import Texttable
 
-from sistemasDePotencia.comun import inf, paralelo
+from sistemasDePotencia.comun import inf, paralelo, S
+from sistemasDePotencia.potencia import Elemento
 
 # Funciones de ayuda
 
@@ -77,18 +80,8 @@ def tabla_costos(data):
 # Clases
 
 # Elementos de Red
-class ElementoDespacho:
-    """Elemento base
-
-    Args:
-        nombre (str): nombre para mostar del elemento
-    """
-
-    def __init__(self, nombre, **kwargs):
-        self.nombre = nombre
-
-    def __str__(self):
-        return f"{self.nombre}"
+class ElementoDespacho(Elemento):
+    """Elemento base par adespacho"""
 
 
 class CargaDespacho(ElementoDespacho):
@@ -309,7 +302,7 @@ class BarraDespacho(ElementoDespacho):
 
 
 class Combinacion:
-    """Combinaciones de generadores"""
+    """Combinaciones de generadores de Despacho"""
 
     def __init__(self, nombre, *generadores):
         self.nombre = nombre
@@ -320,7 +313,7 @@ class Combinacion:
 
 
 class GrupoCombinaciones:
-    """Grupo de combinaciones de generadores
+    """Grupo de combinaciones de generadores de despacho
 
     Calcula las transiciones entre ellas y sus costos
     """
@@ -378,8 +371,75 @@ class GrupoCombinaciones:
         return table.draw()
 
 
+class Escenario(dict):
+    """Escenario de cargas"""
+
+    def __init__(self, nombre: str, cargas: dict[CargaDespacho, list[float, float]]):
+        self.nombre = nombre
+        super().__init__({carga: complex(s * pf, round(s * sin(acos(pf)),2)) for carga, (s, pf) in cargas.items()})
+        self.total = sum(s for s in self.values())
+
+    def __str__(self):
+        return (
+            f"Escenario {self.nombre}:\n"
+            + "\n".join(f"  {carga.nombre}: {s}" for carga, s in self.items())
+            + "\n"
+            + f" {self.total}"
+        )
+
+
+class GrupoEscenarios(list):
+    """Grupo de Escenarios de Carga"""
+
+    def __init__(self, *escenarios: Escenario):
+        super().__init__(escenarios)
+        self.cargas = {carga for es in self for carga in es}
+
+    def __str__(self):
+        table = Texttable()
+        table.set_deco(Texttable.HEADER)
+        table.set_cols_align(["r"] + ["c"] * len(self) + ["l"])
+        table.header(["Escenario"] + [carga.nombre for carga in self.cargas] + ["Total"])
+        table.add_rows(
+            [[es.nombre, *[es.get(carga, "❌") for carga in self.cargas], es.total] for es in self], header=False
+        )
+        return table.draw()
+
+
+class Etapa(list):
+    """Una etapa , combina un escenario con un grupo de combinaciones"""
+
+    def __init__(self, escenario, combinacion):
+        self.escenario = escenario
+        self.combinacion = combinacion
+        pass
+
+
+def reduccionKron(Ym, p):
+    """Elimina un nodo p de la matris"""
+    p -= 1
+    x, y = Ym.shape
+    if x != y:
+        raise ValueError("La matris debe ser cuadrada")
+    if not 0 <= p <= x:
+        raise ValueError("El nodo a eliminar debe estar dentro de la matris")
+    Yn = np.array([[0 + 0j] * (x - 1)] * (x - 1))
+    a = 0
+    for i in range(x):
+        if i == p:
+            continue
+        b = 0
+        for j in range(y):
+            if j == p:
+                continue
+            Yn[a][b] = Ym[i][j] - (Ym[i][p] * Ym[p][j] / Ym[p][p])
+            b += 1
+        a += 1
+    return Yn
+
+
 class RedSimplificada:
-    """Red simplificada de barras
+    """Red simplificada de barras de despacho
 
     Determina las matrices de transformacion C
     """

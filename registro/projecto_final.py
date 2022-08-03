@@ -2,21 +2,23 @@
 import numpy as np
 
 from sistemasDePotencia.comun import M, Vb13, Vb24, u, inf
-from sistemasDePotencia.redes import (
+from sistemasDePotencia.potencia import (
     Barra,
     LineaReal,
     GeneradorBasico,
     TransformadorTap,
-    reduccionKron,
     GaussSiedel,
 )
 from sistemasDePotencia.despacho import (
     Combinacion,
     BarraDespacho,
     CargaDespacho,
+    Escenario,
     GeneradorDespacho,
     GrupoCombinaciones,
     RedSimplificada,
+    reduccionKron,
+    GrupoEscenarios
 )
 
 
@@ -89,6 +91,8 @@ def trabajo_final_red():
         )
     )
     print(GS.resolver())
+    print("Votlajes de Barra")
+    print(GS.matrisVoltajes)
     # 0.01 DE ERROR
     # Ym = reduccionKron(Ym, 7)
     # Ym = reduccionKron(Ym, 5)
@@ -122,6 +126,15 @@ def trabajo_final_despacho():
     SL1 = CargaDespacho("SL1")
     SL2 = CargaDespacho("SL2")
     SL3 = CargaDespacho("SL3")
+    pf = 0.8
+    S1 = Escenario("S1", {SL1: (400, pf), SL2: (300, pf), SL3: (200, pf)})
+    S2 = Escenario("S2", {SL1: (300, pf), SL2: (500, pf), SL3: (500, pf)})
+    S3 = Escenario("S3", {SL1: (500, pf), SL2: (650, pf), SL3: (400, pf)})
+    print(S1)
+    print(S2)
+    print(S3)
+    GS = GrupoEscenarios(S1, S2, S3)
+    print(GS)
     B1 = BarraDespacho("B1", G1, G2, G3)
     B4 = BarraDespacho("B4", G4, carga=SL1)
     B6 = BarraDespacho("B6", carga=SL2)

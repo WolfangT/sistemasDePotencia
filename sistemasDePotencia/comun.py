@@ -90,13 +90,13 @@ class Valor(complex):
     }
     TIPO = None
 
-    def __new__(cls, name, comp, barra=None):
+    def __new__(cls, name, comp, barra=None, muestra=None):
         return super().__new__(cls, comp)
 
-    def __init__(self, name, comp, barra=None):
+    def __init__(self, name, comp, barra=None,  muestra=None):
         self.name = name
         self.unidad = self.TIPOS[self.TIPO][0] if self.TIPO else ("", " J", "")
-        self.muestra = self.TIPOS[self.TIPO][1] if self.TIPO else "rect"
+        self.muestra = muestra or self.TIPOS[self.TIPO][1] if self.TIPO else "rect"
         self.barra = barra
         super().__init__()
 

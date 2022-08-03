@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# redes.py
+# potencia.py
 # Herramientas de Wolfang para calculos rapidos en sistemas de potencia 1
 
 # Standard Library
@@ -22,6 +22,18 @@ from sistemasDePotencia.comun import (
     Z,
     Y,
     inf,
+)
+
+
+# Componentes simetricas
+
+a = rect(1, 120)
+Tfs = np.array(
+    [
+        [1, 1, 1],
+        [a ** 2, a, 1],
+        [a, a ** 2, 1],
+    ]
 )
 
 # Clases de ayuda
@@ -146,130 +158,6 @@ class DeltaEstrella:
         )
 
 
-def reduccionKron(Ym, p):
-    """Elimina un nodo p de la matris"""
-    p -= 1
-    x, y = Ym.shape
-    if x != y:
-        raise ValueError("La matris debe ser cuadrada")
-    if not 0 <= p <= x:
-        raise ValueError("El nodo aeliminar debe estar dentro de la matris")
-    Yn = np.array([[0 + 0j] * (x - 1)] * (x - 1))
-    a = 0
-    for i in range(x):
-        if i == p:
-            continue
-        b = 0
-        for j in range(y):
-            if j == p:
-                continue
-            Yn[a][b] = Ym[i][j] - (Ym[i][p] * Ym[p][j] / Ym[p][p])
-            b += 1
-        a += 1
-    return Yn
-
-
-class GaussSiedel:
-    """"""
-
-    TIPOS = {1: "Compensación", 2: "Volt. Regulado", 3: "P - Q"}
-
-    def __init__(self, barras, Vn, Pn, Qn, alpha, Ym):
-        self.barras = barras
-        self.Vn = Vn
-        self.Qn = Qn
-        self.Pn = Pn
-        self.tipos = [1] + [2 if v else 3 for v in Vn[1:]]
-        self.alpha = alpha
-        self.Ym = Ym
-        self.iter = 0
-        self.V = [[v or 1 + 0j for v in self.Vn]]
-        self.P = [p or 0 for p in self.Pn]
-        self.Q = [[q or 0j for q in self.Qn]]
-        self.error = [[inf for v in self.Vn]]
-
-    def __str__(self):
-        k = self.iter
-        lineas = "\n".join(
-            [
-                " | ".join(
-                    [
-                        f"{barra.nombre:3}",
-                        f"{display_polar(v)}",
-                        f"{p.real:11.06f}" if p else "-".center(11),
-                        f"{q.imag:11.06f}" if q else "-".center(11),
-                        f"{self.TIPOS[tipo]}",
-                    ]
-                )
-                for (barra, v, p, q, tipo) in zip(self.barras, self.V[k], self.P, self.Q[k], self.tipos)
-            ]
-        )
-        return (
-            f"Metodo de Gauss Siedel - iter {self.iter}: (α={self.alpha}, error={self.max_error*100:4.2f}%)\n"
-            + " | ".join([" # ", "V".center(23), "P".center(11), "Q".center(11), " Tipo "])
-            + f"\n{lineas}\n"
-        )
-
-    @property
-    def max_error(self):
-        return max(self.error[-1])
-
-    def calcQ(self, k, i):
-        return (
-            -(
-                self.V[k - 1][i].conjugate()
-                * (
-                    sum(self.Ym[i][j] * self.V[k][j] for j in range(i))
-                    + sum(self.Ym[i][j] * self.V[k - 1][j] for j in range(i, len(self.barras)))
-                )
-            ).imag
-            * 1j
-        )
-
-    def calcV(self, k, i, Q=None):
-        Q = Q or self.Qn
-        return (
-            1
-            / self.Ym[i][i]
-            * (
-                ((self.P[i] - Q[i]) / self.V[k - 1][i].conjugate())
-                - sum(self.Ym[i][j] * self.V[k][j] for j in range(i))
-                - sum(self.Ym[i][j] * self.V[k - 1][j] for j in range(i + 1, len(self.barras)))
-            )
-        )
-
-    def acel(self, Vv, Vn):
-        return Vv + self.alpha * (Vn - Vv)
-
-    def iteracion(self):
-        self.iter += 1
-        k = self.iter
-        self.V.append([self.V[k - 1][i] if self.tipos[i] in (1, 2) else None for i, b in enumerate(self.barras)])
-        self.Q.append([self.Q[k - 1][i] if self.tipos[i] == 3 else None for i, b in enumerate(self.barras)])
-        self.error.append([0 for b in self.barras])
-        for i, barra in enumerate(self.barras):
-            if self.tipos[i] == 1:
-                continue
-            elif self.tipos[i] == 2:
-                self.Q[k][i] = self.calcQ(k, i)
-                self.Q[k][i] = self.acel(self.Q[k - 1][i], self.Q[k][i])
-                self.V[k][i] = rect(abs(self.V[k][i]), ang(self.calcV(k, i, self.Q[k])))
-            elif self.tipos[i] == 3:
-                self.V[k][i] = self.calcV(k, i)
-                self.V[k][i] = self.acel(self.V[k - 1][i], self.V[k][i])
-            self.error[k][i] = abs((self.V[k][i] - self.V[k - 1][i]) / self.V[k - 1][i])
-        return str(self)
-
-    def resolver(self, error=0.01, max_iter=100):
-        """Resolver el sistemas hasta obtener un error maximo"""
-        for i in range(max_iter):
-            self.iteracion()
-            res = [e < error for e in self.error[-1]]
-            if all(res):
-                break
-        return str(self)
-
-
 def ModeloPI(bp, bs, Yp, Yps, Ys):
     """Calcula el flujo de corriente y potencia en una serie de admitancias en forma de pi"""
     Yp0 = Y("Yp0", Yp, bp)
@@ -321,7 +209,7 @@ class Elemento:
     """Elemento trifasico base
 
     Args:
-        nombre: nombre para mostar del elemento
+        nombre: nombre unico para mostar del elemento
     """
 
     def __init__(self, nombre, **kwargs):
@@ -329,6 +217,9 @@ class Elemento:
 
     def __str__(self):
         return f"{self.nombre}"
+
+    def __hash__(self):
+        return self.nombre.__hash__()
 
 
 class Barra(Elemento):
@@ -796,36 +687,160 @@ class CargaIdeal(Elemento):
 
     def __init__(self, nombre, *, bp, Pn, Qn, **kwargs):
         self.bp = bp
+        self.P = P("P", Pn / bp.Sb, bp)
+        self.Q = Q("Q", Qn * 1j / bp.Sb, bp)
         self.S = S("S", complex(Pn, Qn) / bp.Sb, bp)
+        self.S.muestra = "polar"
         super().__init__(nombre, **kwargs)
 
     def __str__(self):
-        return f"{self.nombre}: ({self.bp.nombre})\n" f"  {self.S}\n"
-
-    def en_real(self):
-        return f"{self.nombre}: ({self.bp.nombre})\n" f"  {self.S.en_real()}\n"
+        return f"{self.nombre}: ({self.bp.nombre})\n" f" Valores:\n" f"  {self.S}\n" f"  {self.P}\n" f"  {self.Q}\n"
 
 
-# Componentes simetricas
-
-a = rect(1, 120)
-Tfs = np.array(
-    [
-        [1, 1, 1],
-        [a ** 2, a, 1],
-        [a, a ** 2, 1],
-    ]
-)
+# Red de Potencia
 
 
-def test():
-    print("Ejecutar prueba")
-    r = DeltaEstrella("N1", "N2", "N3")
-    r.impedanciaDelta(Zc=0.25j, Zb=0.4j, Za=0.25j)
-    print(r)
+class RedPotencia:
+    """Obtiene una matris de admitancias"""
+
+    def __init__(self, barras: list[Barra], elementos: list[Elemento]):
+        self.barras = barras
+        self.elementos = elementos
+        self._matris = np.zeros(len(self.barras), dtype=np.complex64)
+        self._barras_gen = []
+        self._barras_carga = []
+        self._barras_trans = []
+        self._calcularMatris()
+
+    def _calcularMatris(self):
+        for elemento in self.elementos:
+            bp = self.barras.index(elemento.bp)
+            try:
+                bs = self.barras.index(elemento.bS)
+            except AttributeError:
+                bs = None
+            if bs is None:  # elemento entre barra y tierra
+                self._matris[bp][bp] += elemento.Y
+                if isinstance(elemento, CargaIdeal):
+                    self._barras_carga.append(elemento.bp)
+                if isinstance(elemento, GeneradorIdeal):
+                    self._barras_gen.append(elemento.bp)
+            else:  # elemento entre dos barras
+                self._matris[bp][bp] += elemento.Yp0 + elemento.Yps
+                self._matris[bs][bs] += elemento.Ys0 + elemento.Yps
+                self._matris[bp][bs] -= elemento.Yps
+                self._matris[bs][bp] -= elemento.Yps
+        for barra in self.barras:
+            if barra not in self._barras_carga and barra not in self._barras_gen:
+                self._barras_trans.append(barra)
 
 
-# Comienzo
+class GaussSiedel:
+    """Ejecuta Gauss Siedel para resolver un sistema de potencia
 
-if __name__ == "__main__":
-    test()
+    Requiere una lista de barras, Potencias activas, reactivas,
+    un factor de aceleracion y la matris de admitancias.
+
+    La barra 1 siempre es la de compensacion
+    """
+
+    TIPOS = {1: "Compensación", 2: "Volt. Regulado", 3: "P - Q"}
+
+    def __init__(self, barras, Vn, Pn, Qn, alpha, Ym):
+        self.barras = barras
+        self.Vn = Vn
+        self.Qn = Qn
+        self.Pn = Pn
+        self.tipos = [1] + [2 if v else 3 for v in Vn[1:]]
+        self.alpha = alpha
+        self.Ym = Ym
+        self.iter = 0
+        self.V = [[v or 1 + 0j for v in self.Vn]]
+        self.P = [p or 0 for p in self.Pn]
+        self.Q = [[q or 0j for q in self.Qn]]
+        self.error = [[inf for v in self.Vn]]
+
+    def __str__(self):
+        k = self.iter
+        lineas = "\n".join(
+            [
+                " | ".join(
+                    [
+                        f"{barra.nombre:3}",
+                        f"{display_polar(v)}",
+                        f"{p.real:11.06f}" if p else "-".center(11),
+                        f"{q.imag:11.06f}" if q else "-".center(11),
+                        f"{self.TIPOS[tipo]}",
+                    ]
+                )
+                for (barra, v, p, q, tipo) in zip(self.barras, self.V[k], self.P, self.Q[k], self.tipos)
+            ]
+        )
+        return (
+            f"Metodo de Gauss Siedel - iter {self.iter}: (α={self.alpha}, error={self.max_error*100:4.2f}%)\n"
+            + " | ".join([" # ", "V".center(23), "P".center(11), "Q".center(11), " Tipo "])
+            + f"\n{lineas}\n"
+        )
+
+    @property
+    def max_error(self):
+        return max(self.error[-1])
+
+    def calcQ(self, k, i):
+        return (
+            -(
+                self.V[k - 1][i].conjugate()
+                * (
+                    sum(self.Ym[i][j] * self.V[k][j] for j in range(i))
+                    + sum(self.Ym[i][j] * self.V[k - 1][j] for j in range(i, len(self.barras)))
+                )
+            ).imag
+            * 1j
+        )
+
+    def calcV(self, k, i, Q=None):
+        Q = Q or self.Qn
+        return (
+            1
+            / self.Ym[i][i]
+            * (
+                ((self.P[i] - Q[i]) / self.V[k - 1][i].conjugate())
+                - sum(self.Ym[i][j] * self.V[k][j] for j in range(i))
+                - sum(self.Ym[i][j] * self.V[k - 1][j] for j in range(i + 1, len(self.barras)))
+            )
+        )
+
+    def acel(self, Vv, Vn):
+        return Vv + self.alpha * (Vn - Vv)
+
+    def iteracion(self):
+        self.iter += 1
+        k = self.iter
+        self.V.append([self.V[k - 1][i] if self.tipos[i] in (1, 2) else None for i, b in enumerate(self.barras)])
+        self.Q.append([self.Q[k - 1][i] if self.tipos[i] == 3 else None for i, b in enumerate(self.barras)])
+        self.error.append([0 for b in self.barras])
+        for i, barra in enumerate(self.barras):
+            if self.tipos[i] == 1:
+                continue
+            elif self.tipos[i] == 2:
+                self.Q[k][i] = self.calcQ(k, i)
+                self.Q[k][i] = self.acel(self.Q[k - 1][i], self.Q[k][i])
+                self.V[k][i] = rect(abs(self.V[k][i]), ang(self.calcV(k, i, self.Q[k])))
+            elif self.tipos[i] == 3:
+                self.V[k][i] = self.calcV(k, i)
+                self.V[k][i] = self.acel(self.V[k - 1][i], self.V[k][i])
+            self.error[k][i] = abs((self.V[k][i] - self.V[k - 1][i]) / self.V[k - 1][i])
+        return str(self)
+
+    def resolver(self, error=0.01, max_iter=100):
+        """Resolver el sistemas hasta obtener un error maximo"""
+        for i in range(max_iter):
+            self.iteracion()
+            res = [e < error for e in self.error[-1]]
+            if all(res):
+                break
+        return str(self)
+
+    @property
+    def matrisVoltajes(self):
+        return np.array([[v] for v in self.V[-1]])

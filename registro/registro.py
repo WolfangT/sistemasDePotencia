@@ -3,7 +3,7 @@
 # Pip
 import numpy as np
 
-from sistemasDePotencia.redes import (
+from sistemasDePotencia.potencia import (
     Barra,
     Linea,
     CargaIdeal,
