@@ -18,7 +18,9 @@ from sistemasDePotencia.despacho import (
     GrupoCombinaciones,
     RedSimplificada,
     reduccionKron,
-    GrupoEscenarios
+    GrupoEscenarios,
+    GrupoEtapas,
+    Etapa,
 )
 
 
@@ -108,11 +110,11 @@ def trabajo_final_red():
 
 
 def trabajo_final_despacho():
-    G1 = GeneradorDespacho("G1", a=0.0096, b=6.4, c=400, Pmax=600, Pmin=50, Ccon=1400, Cdes=2800)
-    G2 = GeneradorDespacho("G2", a=0.0080, b=8.0, c=500, Pmax=400, Pmin=50, Ccon=1600, Cdes=3200)
-    G3 = GeneradorDespacho("G3", a=0.0100, b=7.9, c=600, Pmax=400, Pmin=50, Ccon=1500, Cdes=3000)
-    G4 = GeneradorDespacho("G4", a=0.0110, b=7.5, c=400, Pmax=400, Pmin=50, Ccon=1450, Cdes=2900)
-    G5 = GeneradorDespacho("G5", a=0.0110, b=7.5, c=400, Pmax=400, Pmin=50, Ccon=1450, Cdes=2900)
+    G1 = GeneradorDespacho("G1", a=0.0096, b=6.4, c=400, Pmax=600, Pmin=50, Cdes=1400, Ccon=2800)
+    G2 = GeneradorDespacho("G2", a=0.0080, b=8.0, c=500, Pmax=400, Pmin=50, Cdes=1600, Ccon=3200)
+    G3 = GeneradorDespacho("G3", a=0.0100, b=7.9, c=600, Pmax=400, Pmin=50, Cdes=1500, Ccon=3000)
+    G4 = GeneradorDespacho("G4", a=0.0110, b=7.5, c=400, Pmax=400, Pmin=50, Cdes=1450, Ccon=2900)
+    G5 = GeneradorDespacho("G5", a=0.0110, b=7.5, c=400, Pmax=400, Pmin=50, Cdes=1450, Ccon=2900)
     for gen in (G1, G2, G3, G4, G5):
         print(gen)
     X1 = Combinacion("X1", G1, G2, G3, G4, G5)
@@ -130,37 +132,47 @@ def trabajo_final_despacho():
     S1 = Escenario("S1", {SL1: (400, pf), SL2: (300, pf), SL3: (200, pf)})
     S2 = Escenario("S2", {SL1: (300, pf), SL2: (500, pf), SL3: (500, pf)})
     S3 = Escenario("S3", {SL1: (500, pf), SL2: (650, pf), SL3: (400, pf)})
-    print(S1)
-    print(S2)
-    print(S3)
     GS = GrupoEscenarios(S1, S2, S3)
     print(GS)
-    B1 = BarraDespacho("B1", G1, G2, G3)
-    B4 = BarraDespacho("B4", G4, carga=SL1)
-    B6 = BarraDespacho("B6", carga=SL2)
-    B8 = BarraDespacho("B8", G5, carga=SL3)
-    for barra in (B1, B4, B6, B8):
-        print(barra)
-    red = RedSimplificada(B1, B4, B6, B8)
-    print()
-    print("I1")
-    print(red.corrientes1)
-    print("C12")
-    print(red.separacionDeBarras())
-    print("I2")
-    print(red.corrientes2)
-    print("C23")
-    print(red.unificacionDeCargas([1, 1, 1]))
-    print("I3")
-    print(red.corrientes3)
-    print("C34")
-    print(red.cambioDeReferencia())
-    print("I4")
-    print(red.corrientes4)
-    print("C4G")
-    print(red.cambioDeVariable(10, [1, 2, 3, 4, 5]))
-    print("PG1")
-    print(red.potenciasG)
+    K1 = Etapa("K1", 6, S1, GC)
+    K2 = Etapa("K2", 6, S2, GC)
+    K3 = Etapa("K3", 6, S3, GC)
+    K4 = Etapa("K4", 6, S1, GC)
+    GE = GrupoEtapas(K1, K2, K3, K4)
+    print(GE)
+    print(GE.procesarCostos())
+    ruta, costo = GE.determinarCaminoOptimo()
+    for etapa, comb in ruta[::-1]:
+        print(comb, end=" → ")
+    print(costo)
+    pass
+
+    # B1 = BarraDespacho("B1", G1, G2, G3)
+    # B4 = BarraDespacho("B4", G4, carga=SL1)
+    # B6 = BarraDespacho("B6", carga=SL2)
+    # B8 = BarraDespacho("B8", G5, carga=SL3)
+    # for barra in (B1, B4, B6, B8):
+    #     print(barra)
+    # red = RedSimplificada(B1, B4, B6, B8)
+    # print()
+    # print("I1")
+    # print(red.corrientes1)
+    # print("C12")
+    # print(red.separacionDeBarras())
+    # print("I2")
+    # print(red.corrientes2)
+    # print("C23")
+    # print(red.unificacionDeCargas([1, 1, 1]))
+    # print("I3")
+    # print(red.corrientes3)
+    # print("C34")
+    # print(red.cambioDeReferencia())
+    # print("I4")
+    # print(red.corrientes4)
+    # print("C4G")
+    # print(red.cambioDeVariable(10, [1, 2, 3, 4, 5]))
+    # print("PG1")
+    # print(red.potenciasG)
 
 
 if __name__ == "__main__":

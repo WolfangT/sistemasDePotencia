@@ -42,9 +42,9 @@ def degrees(rad):
     return rad * 180 / pi
 
 
-def radians(degrees):
+def radians(degs):
     """converts degrees to radians"""
-    return degrees * pi / 180
+    return degs * pi / 180
 
 
 def rect(mag, deg):

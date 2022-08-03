@@ -8,7 +8,7 @@ from math import sin, acos
 import numpy as np
 from texttable import Texttable
 
-from sistemasDePotencia.comun import inf, paralelo, S
+from sistemasDePotencia.comun import inf, paralelo
 from sistemasDePotencia.potencia import Elemento
 
 # Funciones de ayuda
@@ -301,73 +301,95 @@ class BarraDespacho(ElementoDespacho):
 # Combinaciones de elementos
 
 
-class Combinacion:
+class Combinacion(list):
     """Combinaciones de generadores de Despacho"""
 
     def __init__(self, nombre, *generadores):
         self.nombre = nombre
-        self.gens = generadores
+        super().__init__(generadores)
+
+    @property
+    def Pmax(self):
+        return sum(gen.Pmax for gen in self)
+
+    @property
+    def Pmin(self):
+        return sum(gen.Pmin for gen in self)
 
     def __str__(self):
-        return "Combinación {self.nombre}: " + " ".join(self.gens)
+        return self.nombre
+
+    def __repr__(self):
+        return self.nombre
+
+    def __hash__(self):
+        return self.nombre.__hash__()
 
 
-class GrupoCombinaciones:
+class GrupoCombinaciones(list):
     """Grupo de combinaciones de generadores de despacho
 
     Calcula las transiciones entre ellas y sus costos
     """
 
     def __init__(self, *combinaciones):
-        self.combs = combinaciones
+        combs = list(set(combinaciones))
+        combs.sort(key=lambda x: x.nombre)
+        super().__init__(combs)
         self._gens = None
         self._transiciones = None
 
     @property
     def gens(self):
+        """Lista de generadores en todas la combinaciones"""
         if self._gens is None:
-            self._gens = list({gen for comb in self.combs for gen in comb.gens})
+            self._gens = list({gen for comb in self for gen in comb})
             self._gens.sort(key=lambda x: x.nombre)
         return self._gens
 
     def __str__(self):
         table = Texttable()
         table.set_deco(Texttable.HEADER)
-        table.set_cols_align(["r"] + ["c"] * len(self.gens))
+        table.set_cols_align(["r"] + ["c"] * len(self.gens) + ["c", "c"])
         table.add_rows(
             [
-                ["Comb.", *(gen.nombre for gen in self.gens)],
-                *([comb.nombre, *["✅" if gen in comb.gens else "❌" for gen in self.gens]] for comb in self.combs),
+                ["Comb.", *(gen.nombre for gen in self.gens), "Pmin", "Pmax"],
+                *(
+                    [comb.nombre, *["✅" if gen in comb else "❌" for gen in self.gens], comb.Pmin, comb.Pmax]
+                    for comb in self
+                ),
             ]
         )
         return table.draw()
 
     def _calc_costo_transicion(self, c1, c2):
-        gens = {*c1.gens, *c2.gens}
+        gens = {*c1, *c2}
         costo = 0
         for gen in gens:
-            if gen not in c1.gens:
+            if gen not in c1:
                 costo += gen.Ccon
-            elif gen not in c2.gens:
+            elif gen not in c2:
                 costo += gen.Cdes
         return costo
 
     @property
     def transiciones(self):
         if self._transiciones is None:
-            self._transiciones = []
-            for c1 in self.combs:
-                for c2 in self.combs:
-                    if c1 is c2:
-                        continue
-                    self._transiciones.append((c1, c2, self._calc_costo_transicion(c1, c2)))
+            self._transiciones = {}
+            for c1 in self:
+                self._transiciones[c1] = {}
+                for c2 in self:
+                    self._transiciones[c1][c2] = self._calc_costo_transicion(c1, c2)
         return self._transiciones
 
     def reporteTransiciones(self):
         table = Texttable()
-        table.set_deco(Texttable.HEADER | Texttable.VLINES)
-        table.header(["Tran.", "Costo"])
-        table.add_rows([[f"{c1.nombre} -> {c2.nombre}", costo] for c1, c2, costo in self.transiciones], header=False)
+        table.set_deco(Texttable.HLINES | Texttable.VLINES | Texttable.HEADER)
+        table.header(["Transición.", *[str(comb) for comb in self]])
+        table.add_rows(
+            [[str(c1), *[self.transiciones[c1][c2] for c2 in self.transiciones[c1]]] for c1 in self.transiciones],
+            header=False,
+        )
         return table.draw()
 
 
@@ -376,7 +398,7 @@ class Escenario(dict):
 
     def __init__(self, nombre: str, cargas: dict[CargaDespacho, list[float, float]]):
         self.nombre = nombre
-        super().__init__({carga: complex(s * pf, round(s * sin(acos(pf)),2)) for carga, (s, pf) in cargas.items()})
+        super().__init__({carga: complex(s * pf, round(s * sin(acos(pf)), 2)) for carga, (s, pf) in cargas.items()})
         self.total = sum(s for s in self.values())
 
     def __str__(self):
@@ -386,6 +408,9 @@ class Escenario(dict):
             + "\n"
             + f" {self.total}"
         )
+
+    def __hash__(self):
+        return self.nombre.__hash__()
 
 
 class GrupoEscenarios(list):
@@ -401,18 +426,125 @@ class GrupoEscenarios(list):
         table.set_cols_align(["r"] + ["c"] * len(self) + ["l"])
         table.header(["Escenario"] + [carga.nombre for carga in self.cargas] + ["Total"])
         table.add_rows(
-            [[es.nombre, *[es.get(carga, "❌") for carga in self.cargas], es.total] for es in self], header=False
+            [[es.nombre, *[es.get(carga, "❌") for carga in self.cargas], es.total] for es in self],
+            header=False,
         )
         return table.draw()
 
 
-class Etapas:
+class Etapa:
     """Una etapa , combina un escenario con un grupo de combinaciones"""
 
-    def __init__(self, escenarios, combinaciones):
-        self.escenarios = escenarios
+    def __init__(self, nombre: str, duracion: float, escenario: Escenario, combinaciones: GrupoCombinaciones):
+        self.nombre = nombre
+        self.duracion = duracion
+        self.escenario = escenario
         self.combinaciones = combinaciones
+        self._costos = None
+
+    def procesar(self):
         pass
+
+    @property
+    def costos(self):
+        if self._costos is None:
+            self._costos = {comb: 1000 * self.duracion for comb in self.combinaciones}
+        return self._costos
+
+    def __hash__(self):
+        return self.nombre.__hash__()
+
+    def __str__(self):
+        return self.nombre
+
+    def __repr__(self):
+        return self.nombre
+
+
+class GrupoEtapas(list):
+    """Grupo de etapas"""
+
+    def __init__(self, *etapas: Etapa):
+        super().__init__(etapas)
+
+        self.combinaciones = GrupoCombinaciones(*(comb for etapa in self for comb in etapa.combinaciones))
+
+    def __str__(self):
+        table = Texttable()
+        table.set_deco(Texttable.HEADER)
+        table.set_cols_align(["r"] + ["c"] * len(self))
+        table.header(["Etapa"] + [etapa.nombre for etapa in self])
+        table.add_row(["Escenario", *[etapa.escenario.nombre for etapa in self]])
+        table.add_row(["Duración", *[etapa.duracion for etapa in self]])
+        table.add_rows(
+            [
+                [comb.nombre, *["☆" if comb in etapa.combinaciones else "❌" for etapa in self]]
+                for comb in self.combinaciones
+            ],
+            header=False,
+        )
+        return table.draw()
+
+    def procesarCostos(self):
+        for etapa in self:
+            etapa.procesar()
+        table = Texttable()
+        table.set_deco(Texttable.HEADER)
+        table.set_cols_align(["r"] + ["c"] * len(self))
+        table.header(["Etapa"] + [etapa.nombre for etapa in self])
+        table.add_rows(
+            [[comb.nombre, *[etapa.costos.get(comb, "❌") or "❌" for etapa in self]] for comb in self.combinaciones],
+            header=False,
+        )
+        return table.draw()
+
+    def determinarCaminoOptimo(self):
+        """Determina el camino optimo usando el algoritmo de Dijkstra"""
+        costos = {}
+        previo = {}
+        for etapa in self:
+            for comb in etapa.combinaciones:
+                nodo = (etapa, comb)
+                costos[nodo] = inf
+                previo[nodo] = None
+        # analisis nodos primera etapa
+        etapa = self[0]
+        for comb in etapa.combinaciones:
+            nodo = (etapa, comb)
+            costos[nodo] = etapa.costos[comb]
+        # analsis otros nodos
+        for x, etapa_inicio in enumerate(self[:-1]):
+            a = x + 1
+            etapa_dest = self[a]
+            for comb_inicio in etapa_inicio.combinaciones:
+                nodo_inicio = (etapa_inicio, comb_inicio)
+                for comb_dest in etapa_dest.combinaciones:
+                    nodo_destino = (etapa_dest, comb_dest)
+                    if (
+                        etapa_dest.costos[comb_dest] is None
+                        or self.combinaciones.transiciones[comb_inicio][comb_dest] is None
+                    ):
+                        # la combinacion no es factible
+                        continue
+                    costo = (
+                        costos[nodo_inicio]
+                        + self.combinaciones.transiciones[comb_inicio][comb_dest]
+                        + etapa_dest.costos[comb_dest]
+                    )
+                    if costo <= costos[nodo_destino]:
+                        costos[nodo_destino] = costo
+                        previo[nodo_destino] = nodo_inicio
+        # analisis nodos ultima etapa
+        etapa = self[-1]
+        comb = min(etapa.combinaciones, key=lambda comb: costos[(etapa, comb)])
+        # mejor ruta
+        ruta = []
+        nodo = (etapa, comb)
+        costo = costos[nodo]
+        while nodo is not None:
+            ruta.append(nodo)
+            nodo = previo[nodo]
+        return ruta, costo
 
 
 def reduccionKron(Ym, p):
