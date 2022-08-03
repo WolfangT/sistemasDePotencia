@@ -406,12 +406,12 @@ class GrupoEscenarios(list):
         return table.draw()
 
 
-class Etapa(list):
+class Etapas:
     """Una etapa , combina un escenario con un grupo de combinaciones"""
 
-    def __init__(self, escenario, combinacion):
-        self.escenario = escenario
-        self.combinacion = combinacion
+    def __init__(self, escenarios, combinaciones):
+        self.escenarios = escenarios
+        self.combinaciones = combinaciones
         pass
 
 
