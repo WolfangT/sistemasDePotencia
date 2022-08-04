@@ -2,13 +2,14 @@
 # despacho.py
 # Herramientas de Wolfang para calculos rapidos en sistemas de potencia 2
 
+# Standard Library
 from math import sin, acos
 
 # Pip
-import numpy as np
 from texttable import Texttable
 
-from sistemasDePotencia.comun import inf, paralelo
+# Sistemas de Potencia
+from sistemasDePotencia.comun import M, inf, paralelo
 from sistemasDePotencia.potencia import Elemento
 
 # Funciones de ayuda
@@ -44,7 +45,6 @@ def tabla_partes_iguales(data):
 
 def tabla_despacho_economnico(data):
     """Dibuja una tabla de Despacho Economico a base de un analisis"""
-    # numero_gen = len(data["gens"])
     table = Texttable()
     table.set_deco(Texttable.HEADER)
     table.add_rows(
@@ -87,12 +87,13 @@ class ElementoDespacho(Elemento):
 class CargaDespacho(ElementoDespacho):
     """Representa una carga, sus caracteristicas de consumo dependen del escenario"""
 
-    def __str__(self):
-        return f"Carga {self.nombre}"
+    def __init__(self, nombre, Sb):
+        self.Sb = Sb
+        super().__init__(nombre)
 
 
 class GeneradorDespacho(ElementoDespacho):
-    """Representa a un generador
+    """Representa a un generador, parametros en MW
 
     Args:
         nombre (str): nombre para mostar del elemento
@@ -105,12 +106,13 @@ class GeneradorDespacho(ElementoDespacho):
         Cdes (int): Costo de desconeccion. Defaults to 0.
     """
 
-    def __init__(self, nombre, *, a, b, c=0, Pmin=0, Pmax=inf, Ccon=0, Cdes=0, **kwargs):
-        self.a = a
-        self.b = b
+    def __init__(self, nombre, Sb, *, a, b, c=0, Pmin=0, Pmax=inf, Ccon=0, Cdes=0, **kwargs):
+        self.Sb = Sb
+        self.a = a * (Sb / M) ** 2
+        self.b = b * (Sb / M)
         self.c = c
-        self.Pmin = Pmin
-        self.Pmax = Pmax
+        self.Pmin = Pmin * M / Sb
+        self.Pmax = Pmax * M / Sb
         self.Ccon = Ccon
         self.Cdes = Cdes
         super().__init__(nombre, **kwargs)
@@ -140,162 +142,6 @@ class GeneradorDespacho(ElementoDespacho):
 
     def __str__(self):
         return f"Gen {self.nombre}:\tλ = {self.a:0.4f}*P{self.nombre} + {self.b:5.2f},\t{self.Pmax} >= P{self.nombre} >= {self.Pmin}"
-
-
-class BarraDespacho(ElementoDespacho):
-    """Barra de generadores
-
-    Args:
-        generadores (list[Generador]): lista de generadores conectados
-        carga (Carga): Carga conectada a la barra
-        costo: Costo por unidad de combustible en los generadores de esta barra
-    """
-
-    def __init__(self, nombre, *generadores, carga=None, costo=1, **kwargs):
-        self.gens = generadores
-        self.costo = costo
-        self.carga = carga
-        self._at = None
-        self._bt = None
-        super().__init__(nombre, **kwargs)
-
-    def __str__(self):
-        return (
-            f"Barra {self.nombre}:\tλt = {self.at:0.4f}*Pt + {self.bt:0.2f},"
-            f"\t{self.Pmax} >= Pt >= {self.Pmin}\n"
-            + "".join(f"\t{g}\n" for g in self.gens)
-            + (f"\t{self.carga}\n" if self.carga else "")
-        )
-
-    def _ordenar(self, data):
-        """Obtiene el index de un resultado segun la lista interna de generadores"""
-        for gen in self.gens:
-            if gen.nombre == data["nombre"]:
-                return self.gens.index(gen)
-
-    @property
-    def Pmin(self):
-        return sum(gen.Pmin for gen in self.gens)
-
-    @property
-    def Pmax(self):
-        return sum(gen.Pmax for gen in self.gens)
-
-    @property
-    def at(self):
-        if self._at is None:
-            self._at = calc_a(*self.gens) if self.gens else inf
-        return self._at
-
-    @property
-    def bt(self):
-        if self._bt is None:
-            self._bt = calc_b(self.at, *self.gens) if self.gens else inf
-        return self._bt
-
-    def calc_partes_iguales(self, pt, gens=None, fijo=None):
-        """Calculo de generadores para la potencia pt en partes iguales"""
-        if gens is None:
-            gens = list(self.gens)
-        if fijo is None:
-            fijo = []
-        p_pt = pt / len(gens)
-        partes_iguales = []
-        for gen in gens.copy():
-            res = gen.fijar_potencia(p_pt)
-            if res["p"] != p_pt:
-                gens.remove(gen)
-                pt -= res["p"]
-                fijo.append(res)
-                break
-            partes_iguales.append(res)
-        else:
-            resultados = fijo + partes_iguales
-            resultados.sort(key=self._ordenar)
-            return resultados
-        return self.calc_partes_iguales(pt, gens, fijo)
-
-    def calc_despacho_economico(self, pt, gens=None, fijo=None):
-        """Calculo de generadores para la potencia pt en despacho economico"""
-        recalc = False
-        if gens is None:
-            gens = list(self.gens)
-        if fijo is None:
-            fijo = []
-        a = calc_a(*gens)
-        b = calc_b(a, *gens)
-        lambda_t = a * pt + b
-        despacho_economico = []
-        for gen in gens.copy():
-            res = gen.fijar_lambda(lambda_t)
-            if res["lambda"] != lambda_t:
-                recalc = True
-            despacho_economico.append(res)
-        if recalc:
-            despacho_economico.sort(key=lambda x: x["lambda"], reverse=True)
-            res = despacho_economico[0]
-            fijo.append(res)
-            for gen in gens:
-                if gen.nombre == res["nombre"]:
-                    break
-            gens.remove(gen)
-            pt -= res["p"]
-            return self.calc_despacho_economico(pt, gens, fijo)
-        else:
-            resultados = fijo + despacho_economico
-            resultados.sort(key=self._ordenar)
-            return resultados
-
-    def despacho(self, pt):
-        """Crea el resultado de despachar la potencia pt tanto por partes
-        iguales como por despacho economico
-        """
-        if pt < self.Pmin or pt > self.Pmax:
-            return {
-                "pt": pt,
-                "partes_iguales": [gen.fijar_0() for gen in self.gens],
-                "despacho": [gen.fijar_0() for gen in self.gens],
-                "costos": {
-                    "delta_f": ["-" for gen in self.gens],
-                    "delta_ft": "-",
-                    "ahorro": "-",
-                },
-            }
-        # Partes iguales
-        partes_iguales = self.calc_partes_iguales(pt)
-        # Despacho
-        despacho = self.calc_despacho_economico(pt)
-        # Analisis de costos
-        delta_f = []
-        for gen_igual, gen_despacho in zip(partes_iguales, despacho):
-            delta_f.append(gen_despacho["f"] - gen_igual["f"])
-        delta_ft = sum(delta_f)
-        ahorro = -self.costo * delta_ft
-        analisis = {"delta_f": delta_f, "delta_ft": delta_ft, "ahorro": ahorro}
-        return {
-            "pt": pt,
-            "partes_iguales": partes_iguales,
-            "despacho": despacho,
-            "costos": analisis,
-        }
-
-    def analisis(self, *p):
-        """Crea la data analisando el despacho de la barra en diferentes potencias"""
-        data = {
-            "barra": self.nombre,
-            "gens": self.gens,
-            "potencias": [],
-            "partes_iguales": [],
-            "despacho": [],
-            "costos": [],
-        }
-        for pt in p:
-            calc = self.despacho(pt)
-            data["potencias"].append(pt)
-            data["partes_iguales"].append(calc["partes_iguales"])
-            data["despacho"].append(calc["despacho"])
-            data["costos"].append(calc["costos"])
-        return data
 
 
 # Combinaciones de elementos
@@ -384,7 +230,8 @@ class GrupoCombinaciones(list):
 
     def reporteTransiciones(self):
         table = Texttable()
-        table.set_deco(Texttable.HLINES | Texttable.VLINES | Texttable.HEADER)
+        table.set_deco(Texttable.HEADER)
+        table.set_cols_align(["r"] + ["c"] * len(self))
         table.header(["Transición.", *[str(comb) for comb in self]])
         table.add_rows(
             [[str(c1), *[self.transiciones[c1][c2] for c2 in self.transiciones[c1]]] for c1 in self.transiciones],
@@ -394,20 +241,22 @@ class GrupoCombinaciones(list):
 
 
 class Escenario(dict):
-    """Escenario de cargas"""
+    """Escenario de cargas, valores en MW"""
 
     def __init__(self, nombre: str, cargas: dict[CargaDespacho, list[float, float]]):
         self.nombre = nombre
-        super().__init__({carga: complex(s * pf, round(s * sin(acos(pf)), 2)) for carga, (s, pf) in cargas.items()})
-        self.total = sum(s for s in self.values())
+        super().__init__(
+            {
+                carga: complex(s * pf * M / carga.Sb, round(s * sin(acos(pf)) * M / carga.Sb, 2))
+                for carga, (s, pf) in cargas.items()
+            }
+        )
+        self.St = sum(s for s in self.values())
+        self.Pt = self.St.real
+        self.Qt = self.St.imag
 
     def __str__(self):
-        return (
-            f"Escenario {self.nombre}:\n"
-            + "\n".join(f"  {carga.nombre}: {s}" for carga, s in self.items())
-            + "\n"
-            + f" {self.total}"
-        )
+        return self.nombre
 
     def __hash__(self):
         return self.nombre.__hash__()
@@ -426,122 +275,155 @@ class GrupoEscenarios(list):
         table.set_cols_align(["r"] + ["c"] * len(self) + ["l"])
         table.header(["Escenario"] + [carga.nombre for carga in self.cargas] + ["Total"])
         table.add_rows(
-            [[es.nombre, *[es.get(carga, "❌") for carga in self.cargas], es.total] for es in self],
+            [[es.nombre, *[es.get(carga, "❌") for carga in self.cargas], es.St] for es in self],
             header=False,
         )
         return table.draw()
 
 
-class Etapa:
-    """Una etapa , combina un escenario con un grupo de combinaciones"""
+# Despacho economico
 
-    def __init__(self, nombre: str, duracion: float, escenario: Escenario, combinaciones: GrupoCombinaciones):
+
+class DespachoEconomico:
+    """Barra de generadores y un
+
+    Args:
+        generadores (Combinacion): lista de generadores conectados
+        costo: Costo por unidad de combustible en los generadores de esta barra
+    """
+
+    def __init__(self, nombre, generadores: Combinacion, costo=1):
         self.nombre = nombre
-        self.duracion = duracion
-        self.escenario = escenario
-        self.combinaciones = combinaciones
-        self._costos = None
+        self.gens = generadores
+        self.costo = costo
+        self._at = None
+        self._bt = None
 
-    def procesar(self):
-        pass
+    def __str__(self):
+        return (
+            f"Desp. {self.nombre}:\tλt = {self.at:0.4f}*Pt + {self.bt:0.2f},"
+            f"\t{self.gens.Pmax} >= Pt >= {self.gens.Pmin}\n"
+            + "".join(f"\t{g}\n" for g in self.gens)
+        )
+
+    def _ordenar(self, data):
+        """Obtiene el index de un resultado segun la lista interna de generadores"""
+        for gen in self.gens:
+            if gen.nombre == data["nombre"]:
+                return self.gens.index(gen)
 
     @property
-    def costos(self):
-        if self._costos is None:
-            self._costos = {comb: 1000 * self.duracion for comb in self.combinaciones}
-        return self._costos
+    def at(self):
+        if self._at is None:
+            self._at = calc_a(*self.gens) if self.gens else inf
+        return self._at
 
-    def __hash__(self):
-        return self.nombre.__hash__()
+    @property
+    def bt(self):
+        if self._bt is None:
+            self._bt = calc_b(self.at, *self.gens) if self.gens else inf
+        return self._bt
 
-    def __str__(self):
-        return self.nombre
+    def calc_partes_iguales(self, pt, gens=None, fijo=None):
+        """Calculo de generadores para la potencia pt en partes iguales"""
+        if gens is None:
+            gens = list(self.gens)
+        if fijo is None:
+            fijo = []
+        p_pt = pt / len(gens)
+        partes_iguales = []
+        for gen in gens.copy():
+            res = gen.fijar_potencia(p_pt)
+            if res["p"] != p_pt:
+                gens.remove(gen)
+                pt -= res["p"]
+                fijo.append(res)
+                break
+            partes_iguales.append(res)
+        else:
+            resultados = fijo + partes_iguales
+            resultados.sort(key=self._ordenar)
+            return resultados
+        return self.calc_partes_iguales(pt, gens, fijo)
 
-    def __repr__(self):
-        return self.nombre
+    def calc_despacho_economico(self, pt, gens=None, fijo=None):
+        """Calculo de generadores para la potencia pt en despacho economico"""
+        recalc = False
+        if gens is None:
+            gens = list(self.gens)
+        if fijo is None:
+            fijo = []
+        a = calc_a(*gens)
+        b = calc_b(a, *gens)
+        lambda_t = a * pt + b
+        despacho_economico = []
+        for gen in gens.copy():
+            res = gen.fijar_lambda(lambda_t)
+            if res["lambda"] != lambda_t:
+                recalc = True
+            despacho_economico.append(res)
+        if recalc:
+            despacho_economico.sort(key=lambda x: x["lambda"], reverse=True)
+            res = despacho_economico[0]
+            fijo.append(res)
+            for gen in gens:
+                if gen.nombre == res["nombre"]:
+                    break
+            gens.remove(gen)
+            pt -= res["p"]
+            return self.calc_despacho_economico(pt, gens, fijo)
+        else:
+            resultados = fijo + despacho_economico
+            resultados.sort(key=self._ordenar)
+            return resultados
 
+    def despacho(self, cargas: Escenario):
+        """Crea el resultado de despachar la potencia pt tanto por partes
+        iguales como por despacho economico
+        """
+        if cargas.Pt < self.gens.Pmin or cargas.Pt > self.gens.Pmax:
+            return {
+                "pt": cargas.Pt,
+                "partes_iguales": [gen.fijar_0() for gen in self.gens],
+                "despacho": [gen.fijar_0() for gen in self.gens],
+                "costos": {
+                    "delta_f": ["-" for gen in self.gens],
+                    "delta_ft": "-",
+                    "ahorro": "-",
+                },
+            }
+        # Partes iguales
+        partes_iguales = self.calc_partes_iguales(cargas.Pt)
+        # Despacho
+        despacho = self.calc_despacho_economico(cargas.Pt)
+        # Analisis de costos
+        delta_f = []
+        for gen_igual, gen_despacho in zip(partes_iguales, despacho):
+            delta_f.append(gen_despacho["f"] - gen_igual["f"])
+        delta_ft = sum(delta_f)
+        ahorro = -self.costo * delta_ft
+        analisis = {"delta_f": delta_f, "delta_ft": delta_ft, "ahorro": ahorro}
+        return {
+            "pt": cargas.Pt,
+            "partes_iguales": partes_iguales,
+            "despacho": despacho,
+            "costos": analisis,
+        }
 
-class GrupoEtapas(list):
-    """Grupo de etapas"""
-
-    def __init__(self, *etapas: Etapa):
-        super().__init__(etapas)
-
-        self.combinaciones = GrupoCombinaciones(*(comb for etapa in self for comb in etapa.combinaciones))
-
-    def __str__(self):
-        table = Texttable()
-        table.set_deco(Texttable.HEADER)
-        table.set_cols_align(["r"] + ["c"] * len(self))
-        table.header(["Etapa"] + [etapa.nombre for etapa in self])
-        table.add_row(["Escenario", *[etapa.escenario.nombre for etapa in self]])
-        table.add_row(["Duración", *[etapa.duracion for etapa in self]])
-        table.add_rows(
-            [
-                [comb.nombre, *["☆" if comb in etapa.combinaciones else "❌" for etapa in self]]
-                for comb in self.combinaciones
-            ],
-            header=False,
-        )
-        return table.draw()
-
-    def procesarCostos(self):
-        for etapa in self:
-            etapa.procesar()
-        table = Texttable()
-        table.set_deco(Texttable.HEADER)
-        table.set_cols_align(["r"] + ["c"] * len(self))
-        table.header(["Etapa"] + [etapa.nombre for etapa in self])
-        table.add_rows(
-            [[comb.nombre, *[etapa.costos.get(comb, "❌") or "❌" for etapa in self]] for comb in self.combinaciones],
-            header=False,
-        )
-        return table.draw()
-
-    def determinarCaminoOptimo(self):
-        """Determina el camino optimo usando el algoritmo de Dijkstra"""
-        costos = {}
-        previo = {}
-        for etapa in self:
-            for comb in etapa.combinaciones:
-                nodo = (etapa, comb)
-                costos[nodo] = inf
-                previo[nodo] = None
-        # analisis nodos primera etapa
-        etapa = self[0]
-        for comb in etapa.combinaciones:
-            nodo = (etapa, comb)
-            costos[nodo] = etapa.costos[comb]
-        # analsis otros nodos
-        for x, etapa_inicio in enumerate(self[:-1]):
-            a = x + 1
-            etapa_dest = self[a]
-            for comb_inicio in etapa_inicio.combinaciones:
-                nodo_inicio = (etapa_inicio, comb_inicio)
-                for comb_dest in etapa_dest.combinaciones:
-                    nodo_destino = (etapa_dest, comb_dest)
-                    if (
-                        etapa_dest.costos[comb_dest] is None
-                        or self.combinaciones.transiciones[comb_inicio][comb_dest] is None
-                    ):
-                        # la combinacion no es factible
-                        continue
-                    costo = (
-                        costos[nodo_inicio]
-                        + self.combinaciones.transiciones[comb_inicio][comb_dest]
-                        + etapa_dest.costos[comb_dest]
-                    )
-                    if costo <= costos[nodo_destino]:
-                        costos[nodo_destino] = costo
-                        previo[nodo_destino] = nodo_inicio
-        # analisis nodos ultima etapa
-        etapa = self[-1]
-        comb = min(etapa.combinaciones, key=lambda comb: costos[(etapa, comb)])
-        # mejor ruta
-        ruta = []
-        nodo = (etapa, comb)
-        costo = costos[nodo]
-        while nodo is not None:
-            ruta.append(nodo)
-            nodo = previo[nodo]
-        return ruta, costo
+    def analisis(self, grupoCargas: GrupoEscenarios):
+        """Crea la data analisando el despacho de la barra en diferentes potencias"""
+        data = {
+            "barra": self.nombre,
+            "gens": self.gens,
+            "potencias": [],
+            "partes_iguales": [],
+            "despacho": [],
+            "costos": [],
+        }
+        for cargas in grupoCargas:
+            calc = self.despacho(cargas)
+            data["potencias"].append(cargas)
+            data["partes_iguales"].append(calc["partes_iguales"])
+            data["despacho"].append(calc["despacho"])
+            data["costos"].append(calc["costos"])
+        return data

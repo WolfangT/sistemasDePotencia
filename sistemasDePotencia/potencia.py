@@ -3,25 +3,25 @@
 # Herramientas de Wolfang para calculos rapidos en sistemas de potencia 1
 
 # Standard Library
-from math import atan, sqrt, acos
+from math import acos, atan, sqrt
 
 # Pip
 import numpy as np
 
+# Sistemas de Potencia
 from sistemasDePotencia.comun import (
+    I,
+    S,
+    V,
+    Y,
+    Z,
     rect,
     degrees,
     cambio_base,
     display_rect,
     display_polar,
     display_single,
-    S,
-    V,
-    I,
-    Z,
-    Y,
 )
-
 
 # Clases de ayuda
 
@@ -210,6 +210,11 @@ class Elemento:
 
     def __hash__(self):
         return self.nombre.__hash__()
+
+    def __eq__(self, other):
+        if hash(self) == hash(other):
+            return True
+        return False
 
 
 class Barra(Elemento):
@@ -675,14 +680,25 @@ class BancoCapasitores(Elemento):
 class CargaIdeal(Elemento):
     """Carga Ideal conectado de tierra a barra primaria"""
 
-    def __init__(self, nombre, *, bp, Pn, Qn, **kwargs):
+    def __init__(self, nombre, *, bp, Pn=0, Qn=0, **kwargs):
         self.bp = bp
-        self.P = S("P", Pn / bp.Sb, bp)
-        self.Q = S("Q", Qn * 1j / bp.Sb, bp)
-        self.S = S("S", complex(Pn, Qn) / bp.Sb, bp)
+        self._S = None
+        self.P = None
+        self.Q = None
+        self.S = complex(Pn, Qn)
         self.Y = Y("Y", 0, bp)
-        self.S.muestra = "polar"
         super().__init__(nombre, **kwargs)
+
+    @property
+    def S(self):
+        return self._S
+
+    @S.setter
+    def S(self, val):
+        self.P = S("P", val.real , self.bp)
+        self.Q = S("Q", val.imag * 1j , self.bp)
+        self._S = S("S", val , self.bp)
+        self._S.muestra = "polar"
 
     def __str__(self):
         return f"{self.nombre}: ({self.bp.nombre})\n" f" Valores:\n" f"  {self.S}\n" f"  {self.P}\n" f"  {self.Q}\n"

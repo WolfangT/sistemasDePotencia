@@ -40,6 +40,7 @@ skip_glob = ["lvenv/*", "venv/*", ".git/*", ".vscode/*", "*.egg-info"]
 atomic = true
 import_heading_stdlib = "Standard Library"
 import_heading_thirdparty = "Pip"
+import_heading_firstparty = "Sistemas de Potencia"
 import_heading_localfolder = "Local"
 sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
 

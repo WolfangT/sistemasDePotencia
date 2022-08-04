@@ -3,6 +3,14 @@
 # Pip
 import numpy as np
 
+# Sistemas de Potencia
+from sistemasDePotencia.despacho import (
+    BarraDespacho,
+    GeneradorDespacho,
+    tabla_costos,
+    tabla_partes_iguales,
+    tabla_despacho_economnico,
+)
 from sistemasDePotencia.potencia import (
     Barra,
     Linea,
@@ -11,13 +19,6 @@ from sistemasDePotencia.potencia import (
     GeneradorIdeal,
     BancoCapasitores,
     TransformadorTap,
-)
-from sistemasDePotencia.despacho import (
-    BarraDespacho,
-    GeneradorDespacho,
-    tabla_costos,
-    tabla_partes_iguales,
-    tabla_despacho_economnico,
 )
 
 # def examen_practica():
