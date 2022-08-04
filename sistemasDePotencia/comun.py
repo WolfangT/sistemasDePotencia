@@ -12,7 +12,7 @@ import numpy as np
 
 # Conf librerias
 
-np.set_printoptions(precision=4, suppress=True, linewidth=120)
+np.set_printoptions(precision=2, suppress=True, linewidth=180)
 
 # Constantes
 

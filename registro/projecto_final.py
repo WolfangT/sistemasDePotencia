@@ -8,6 +8,8 @@ from sistemasDePotencia.potencia import (
     GeneradorBasico,
     TransformadorTap,
     GaussSiedel,
+    RedPotencia,
+    CargaIdeal,
 )
 from sistemasDePotencia.despacho import (
     Combinacion,
@@ -51,50 +53,32 @@ def trabajo_final_red():
     print(L2 := LineaReal("Alamo-Sauce", Rn=0.1984, Xn=0.4589, Bn=0.63017 * u, Gn=0, bp=B3, bs=B5, L=13, T=3))
     print(L3 := LineaReal("Roble-Sauce", Rn=0.1984, Xn=0.4589, Bn=0.63017 * u, Gn=0, bp=B5, bs=B7, L=13.25, T=3))
     print(L4 := LineaReal("Orquidea-Roble", Rn=0.2614, Xn=0.49345, Bn=0.47263 * u, Gn=0, bp=B2, bs=B7, L=15.50, T=4))
-    Y10 = G1.Y + G2.Y + G3.Y
-    Y12 = TX1.Yps + TX2.Yps
-    Y20 = L1.Yp0 + L4.Yp0
-    Y23 = L1.Yps
-    Y27 = L4.Yps
-    Y30 = L1.Ys0 + L2.Yp0
-    Y34 = TX3.Yps
-    Y40 = G4.Y
-    Y35 = L2.Yps
-    Y50 = L2.Ys0 + L3.Yp0 + TX4.Yp0
-    Y56 = TX4.Yps
-    Y60 = TX4.Ys0
-    Y57 = L3.Yps
-    Y70 = L3.Ys0 + L4.Ys0 + TX5.Yp0
-    Y78 = TX5.Yps
-    Y80 = TX5.Ys0 + G5.Y
-    Ym = np.array(
-        [
-            [Y10 + Y12, -Y12, 0, 0, 0, 0, 0, 0],
-            [-Y12, Y20 + Y12 + Y23 + Y27, -Y23, 0, 0, 0, -Y27, 0],
-            [0, -Y23, Y30 + Y34 + Y35, -Y34, -Y35, 0, 0, 0],
-            [0, 0, -Y34, Y40 + Y34, 0, 0, 0, 0],
-            [0, 0, 0, 0, Y50 + Y56 + Y57, -Y56, -Y57, 0],
-            [0, 0, 0, 0, -Y56, Y60 + Y56, 0, 0],
-            [0, -Y27, 0, 0, 0, 0, Y70 + Y27 + Y78, -Y78],
-            [0, 0, 0, 0, 0, 0, -Y78, Y78 + Y80],
-        ]
-    )
-    print(Ym)
+    print(SL1 := CargaIdeal("SL1", bp=B4, Pn=240, Qn=180))
+    print(SL2 := CargaIdeal("SL2", bp=B6, Pn=400, Qn=300))
+    print(SL3 := CargaIdeal("SL3", bp=B8, Pn=520, Qn=390))
     print()
-    alpha = 1.6
-    print(
-        GS := GaussSiedel(
-            [B1, B2, B3, B4, B5, B6, B7, B8],
-            [1 + 0j, None, None, G4.V, None, None, None, G5.V],
-            [None, 0, 0, 0.320, 0, 0.240, 0, 0.160],
-            [None, 0j, 0j, 0.240j, 0j, 0.180j, 0j, 0.120j],
-            alpha,
-            Ym,
-        )
-    )
-    print(GS.resolver())
-    print("Votlajes de Barra")
-    print(GS.matrisVoltajes)
+    RP = RedPotencia(barras=[B1, B2, B3, B4, B5, B6, B7, B8], elementos=[TX1, TX2, TX3, TX4, TX5, L1, L2, L3, L4], generadores=[G1, G2, G3, G4, G5])
+    RP.calcularMatris(, cargas=[SL1, SL2, SL3])
+    print(RP.matrisAdmitancias)
+    print(RP.barrasGeneracion)
+    print(RP.barrasCarga)
+    print(RP.barrasTransmision)
+    # print()
+    # alpha = 1.6
+    # print(
+    #     GS := GaussSiedel(
+    #         [B1, B2, B3, B4, B5, B6, B7, B8],
+    #         [1 + 0j, None, None, G4.V, None, None, None, G5.V],
+    #         [None, 0, 0, 0.320, 0, 0.240, 0, 0.160],
+    #         [None, 0j, 0j, 0.240j, 0j, 0.180j, 0j, 0.120j],
+    #         alpha,
+    #         Ym,
+    #     )
+    # )
+    # print(GS.resolver())
+    # print("Votlajes de Barra")
+    # print(GS.matrisVoltajes)
+
     # 0.01 DE ERROR
     # Ym = reduccionKron(Ym, 7)
     # Ym = reduccionKron(Ym, 5)
@@ -145,7 +129,6 @@ def trabajo_final_despacho():
     for etapa, comb in ruta[::-1]:
         print(comb, end=" → ")
     print(costo)
-    pass
 
     # B1 = BarraDespacho("B1", G1, G2, G3)
     # B4 = BarraDespacho("B4", G4, carga=SL1)
@@ -177,4 +160,4 @@ def trabajo_final_despacho():
 
 if __name__ == "__main__":
     trabajo_final_red()
-    trabajo_final_despacho()
+    # trabajo_final_despacho()
